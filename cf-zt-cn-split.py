@@ -4,7 +4,7 @@ import re
 
 CF_API_TOKEN = os.getenv("CF_API_TOKEN")
 ACCOUNT_ID   = os.getenv("CF_ACCOUNT_ID")
-PROFILE_ID   = ""
+PROFILE_ID   = "default"
 MODE         = os.getenv("MODE", "exclude")  # exclude=CN直连 | include=只有CN走WARP
 ALLOWED_MODES = {"exclude", "include"}
 
