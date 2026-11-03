@@ -84,11 +84,18 @@ def update_split_tunnels(cidrs, domains):
     if len(routes) > MAX_RULES:
         print(f"⚠️  规则总数超出限制，已截断至 {MAX_RULES} 条")
         routes = routes[:MAX_RULES]
+    # 更新默认设备策略（必须带上 default 作为策略 ID）
+    url = f"https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/devices/policy/default"
 
-    # 使用 Cloudflare 最新的默认策略 API 端
-    url = f"https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/devices/policy" 
-    payload = {MODE: routes}
-    resp = requests.put(url, json=payload, headers=HEADERS)
+    # 构造 payload
+    payload = {}
+    if MODE == "exclude":
+    payload = {"exclude": routes}
+    else:
+    payload = {"include": routes}
+
+    # 使用 PATCH 方法更新（不用 PUT）
+    resp = requests.patch(url, json=payload, headers=HEADERS)
     if resp.status_code in (200, 204):
         print(f"✅ 同步成功！{len(routes)} 条路由 | Mode: {MODE}")
     else:
