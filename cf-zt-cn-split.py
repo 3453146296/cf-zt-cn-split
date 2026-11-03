@@ -54,7 +54,7 @@ def update_split_tunnels(cidrs, domains):
     print(f"   域名规则：{len(domain_entries)} 条 | IP 规则：{len(ip_entries)} 条 | 合计：{len(routes)} 条")
 
     # 直接使用官方最新的 默认排除列表 API 端点
-    url = f"https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/devices/policy/exclude"
+    url = f"https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/devices/policy/default/exclude"
     
     # 发送 PUT 请求，直接提交整个列表
     resp = requests.put(url, json=routes, headers=HEADERS)
