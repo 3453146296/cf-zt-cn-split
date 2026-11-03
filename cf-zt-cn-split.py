@@ -14,7 +14,7 @@ HEADERS = {
     "Content-Type": "application/json"
 }
 
-MAX_RULES       = 1000
+MAX_RULES       = 5000
 TARGET_DOMAIN_N = 200
 
 # 合法域名正则
