@@ -92,9 +92,7 @@ def update_split_tunnels(cidrs, domains):
         payload = {"exclude": routes}
     else:
         payload = {"include": routes}
-
-# 使用 PATCH 方法更新
-resp = requests.patch(url, json=payload, headers=HEADERS)
+        
     resp = requests.patch(url, json=payload, headers=HEADERS)
     if resp.status_code in (200, 204):
         print(f"✅ 同步成功！{len(routes)} 条路由 | Mode: {MODE}")
