@@ -2,10 +2,12 @@ import requests
 import os
 import re
 
-# 读取环境变量
+# 1. 读取环境变量（只认这两个！）
 CF_API_TOKEN = os.getenv("CF_API_TOKEN")
 ACCOUNT_ID   = os.getenv("CF_ACCOUNT_ID")
-MODE         = os.getenv("MODE", "exclude") 
+
+if not all([CF_API_TOKEN, ACCOUNT_ID]):
+    raise ValueError("缺少环境变量！请在 GitHub Secrets 设置 CF_API_TOKEN、CF_ACCOUNT_ID")
 
 HEADERS = {
     "Authorization": f"Bearer {CF_API_TOKEN}",
@@ -14,6 +16,8 @@ HEADERS = {
 
 MAX_RULES       = 1000
 TARGET_DOMAIN_N = 200
+
+# 合法域名正则
 VALID_DOMAIN_RE = re.compile(r'^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$')
 
 DOMAIN_URL = "https://raw.githubusercontent.com/Loyalsoldier/surge-rules/release/direct.txt"
@@ -53,17 +57,19 @@ def update_split_tunnels(cidrs, domains):
 
     print(f"   域名规则：{len(domain_entries)} 条 | IP 规则：{len(ip_entries)} 条 | 合计：{len(routes)} 条")
 
-    # 直接使用官方最新的 默认排除列表 API 端点
-    url = f"https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/devices/policy/default/exclude"
+    # ==========================================
+    # 核心：直接请求默认策略的排除列表（不带任何前缀或 ID）
+    # ==========================================
+    url = f"https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/devices/policy/exclude"
     
-    # 发送 PUT 请求，直接提交整个列表
+    # 发送 PUT 请求
     resp = requests.put(url, json=routes, headers=HEADERS)
     
     if resp.status_code in (200, 204):
-        print(f"✅ 同步成功！{len(routes)} 条路由。")
+        print(f"✅ 同步成功！{len(routes)} 条路由已写入 Cloudflare。")
     else:
         print(f"❌ 失败 {resp.status_code}: Cloudflare API 返回错误。")
-        print(resp.text) # 打印具体的错误信息
+        print(resp.text) # 如果还报错，把打印出的这行发给我
         resp.raise_for_status()
 
 if __name__ == "__main__":
