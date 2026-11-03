@@ -90,9 +90,9 @@ def update_split_tunnels(cidrs, domains):
     # 构造 payload
     payload = {}
     if MODE == "exclude":
-    payload = {"exclude": routes}
+        payload = {"exclude": routes}
     else:
-    payload = {"include": routes}
+        payload = {"include": routes}
 
     # 使用 PATCH 方法更新（不用 PUT）
     resp = requests.patch(url, json=payload, headers=HEADERS)
