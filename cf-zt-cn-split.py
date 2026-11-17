@@ -15,7 +15,7 @@ cf-zt-cn-split v2 —— 把中国大陆 IP 段写进 Cloudflare Zero Trust 的 
   MODE           exclude（默认，列出的直连）/ include（列出的走隧道）
   MAX_RULES      条目上限，默认 1000（官方：Split Tunnel + Local Domain Fallback 合计 1000）
   OVERCOVER      1 = 允许把稀疏 /16 整段并入（会多排除少量非 CN 地址），默认 0
-  ALL_PROFILES   1 = 给账号下所有设备 profile 写同一份列表（PC/手机保持一致），默认 0
+  ALL_PROFILES   1（默认）= 给账号下所有设备 profile 写同一份列表（PC/手机保持一致）；0 = 只写一个
   DRY_RUN        1 = 只算不写，打印统计与首尾样例
 
 用法：
@@ -179,8 +179,9 @@ def main():
     if not TOKEN or not account:
         sys.exit("缺少 CF_API_TOKEN 或 CF_ACCOUNT_ID（可用 DRY_RUN=1 先试算）")
 
-    # ALL_PROFILES=1：给账号下每个设备 profile 都写同一份列表，避免 PC 和手机不同步
-    if env("ALL_PROFILES", "0") == "1":
+    # ALL_PROFILES：默认开启，给账号下每个设备 profile 都写同一份列表，避免 PC 和手机不同步
+    # 设为 0 可退回"只写一个 profile"的旧行为
+    if env("ALL_PROFILES", "1") == "1":
         base = "https://api.cloudflare.com/client/v4/accounts/%s/devices" % account
         st, txt = api_call("GET", base + "/policies")
         if st != 200:
