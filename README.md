@@ -1,195 +1,71 @@
-# cf-zt-cn-split
+# cf-zt-split v2 —— 让 WARP 分流真正可用
 
-自动同步中国大陆 IP 段与直连域名到 Cloudflare Zero Trust 分流隧道（Split Tunnels），实现 CN 流量直连、其余流量走 WARP 的网络分流策略。
+## 这是什么
+把中国大陆 IP 段写进 Cloudflare Zero Trust 的 **Split Tunnels（exclude 列表）**，
+让国内流量直连、其余走 WARP。配套一份可自动跑的 GitHub Actions 工作流。
 
------
+## 为什么改
+实测现状：线上列表 1000 条 = 800 条 IP（按文件顺序，截止 `103.19.46.0/23`）+ 200 条随机域名，
+只覆盖 CN 地址空间的 **27.33%**。`Find-NetRoute` 实测 `223.5.5.5 / 114.114.114.114 /
+220.181.38.148 / 106.11.0.1` 全部走 CloudflareWARP 隧道 —— 国内主流段全在隧道里，所以慢。
 
-## 功能简介
+v2 改成**按覆盖地址数排序**，同样 1000 条额度：
 
-- 自动拉取最新中国大陆 IP 数据（来源：[soffchen/GeoIP2-CN](https://github.com/soffchen/GeoIP2-CN) 全运营商聚合版）
-- 自动拉取精选 CN 直连域名（来源：[Loyalsoldier/surge-rules](https://github.com/Loyalsoldier/surge-rules) `direct.txt`）
-- 域名规则优先（DNS 层命中），IP 规则兜底（网络层），在 4000 条限额内最大化分流准确性
-- 通过 Cloudflare Zero Trust API 更新设备策略的 Split Tunnels 规则
-- 支持 `exclude`（CN 直连）和 `include`（仅 CN 走 WARP）两种模式
-- 通过 GitHub Actions 定时自动运行，无需手动维护
+| 模式 | 条目 | CN 地址覆盖 | 误伤非 CN |
+|---|---|---|---|
+| v1（现状） | 1000 | 27.33% | 0 |
+| v2 tight | 1000 | **98.06%** | 0 |
+| v2 max（/16 合并） | 1000 | **99.05%** | 4.57M 地址 |
 
------
+官方硬顶：`Combined Split Tunnel and Local Domain Fallback entries per device profile = 1,000`。
 
-## 工作原理
+## 语言 / 环境 / 依赖
+- 语言：Python 3（脚本只用标准库 `urllib` / `ipaddress` / `json`，**不需要 pip install**）
+- 本机运行：`python cf-zt-cn-split.py`（本机 python 走 OpenSSL，能直连 GitHub；
+  `curl.exe` 的 schannel 不行，别用 curl 下载数据源）
+- 云端运行：GitHub Actions，`ubuntu-latest` + `python 3.12`
 
-```text
-Loyalsoldier/surge-rules (direct.txt)     soffchen/GeoIP2-CN (CN-ip-cidr.txt)
-        ↓ 精选 CN 直连域名（取前 100 条）           ↓ 全运营商聚合 CIDR（取前 3900 条）
-                        ↓ 合并，域名规则在前 ↓
-                      cf-zt-cn-split.py
-                        ↓ Cloudflare Zero Trust API（PUT）
-              设备策略 Split Tunnels 规则（exclude / include）
-                        ↓
-         CN 域名 DNS 层直连 + CN IP 网络层兜底，其余走 WARP
-```
+## 环境变量
+| 变量 | 必填 | 说明 |
+|---|---|---|
+| `CF_API_TOKEN` | 是 | Cloudflare API Token，权限：Account → **Zero Trust: Edit** |
+| `CF_ACCOUNT_ID` | 是 | 账号 ID（dashboard URL 里 `/accounts/<这一段>/`） |
+| `CF_PROFILE_ID` | 否 | 设备配置 profile ID；不填用默认策略 |
+| `MODE` | 否 | `exclude`（默认）/ `include` |
+| `MAX_RULES` | 否 | 默认 1000 |
+| `OVERCOVER` | 否 | `1` 时把稀疏 /16 整段并入，覆盖 99.05%，代价是多排除 4.57M 非 CN 地址 |
+| `DRY_RUN` | 否 | `1` 只算不写 |
 
-### 分流优先级逻辑
+## 三种落地方式
 
-```text
-用户访问 baidu.com
-  → 命中域名规则 *.baidu.com → DNS + 流量均走直连通道 ✅
-
-用户访问未收录域名，但解析到国内 IP
-  → 域名规则未命中 → IP 规则兜底命中 → 直连 ✅
-
-用户访问未收录域名，IP 也未收录
-  → 两层均未命中 → 走 WARP ⚠️（概率极低，可接受）
-```
-
------
-
-## 前置要求
-
-- Cloudflare Zero Trust 账户（免费版即可）
-- 已在设备上部署 Cloudflare WARP 客户端
-- Cloudflare API Token（需具备 Zero Trust 写权限）
-
------
-
-## 快速开始
-
-### 1. Fork 本仓库
-
-点击右上角 **Fork** 按钮，将仓库复制到你的 GitHub 账户。
-
-### 2. 配置 GitHub Secrets
-
-进入仓库 **Settings → Secrets and variables → Actions**，添加以下 Secrets：
-
-|Secret 名称      |说明                                                        |是否必填|
-|---------------|----------------------------------------------------------|----|
-|`CF_API_TOKEN` |Cloudflare API Token，需具备 Zero Trust 写权限                   |✅必填  |
-|`CF_ACCOUNT_ID`|Cloudflare 账户 ID，可在控制台右侧边栏找到                              |✅必填  |
-|`CF_PROFILE_ID`|设备策略 ID，留空则使用默认策略                                         |❌可选  |
-|`MODE`         |分流模式：`exclude`（CN 直连）或 `include`（仅 CN 走 WARP），默认 `exclude`|❌可选  |
-
-#### 如何获取 API Token
-
-1. 前往 [Cloudflare Dashboard → API Tokens](https://dash.cloudflare.com/profile/api-tokens)
-1. 点击 **Create Token**
-1. 选择 **Edit Cloudflare Zero Trust** 模板，或手动添加 `Zero Trust: Edit` 权限
-1. 复制生成的 Token
-
-### 3. 启用 GitHub Actions
-
-进入仓库 **Actions** 标签页，启用 Workflow。默认每天自动运行一次，也可手动触发。
-
------
-
-## 配置说明
-
-### 分流模式（MODE）
-
-|模式           |行为                                   |
-|-------------|-------------------------------------|
-|`exclude`（默认）|CN IP 和域名加入排除列表，CN 流量**不走** WARP，直连出口|
-|`include`    |CN IP 和域名加入包含列表，**只有** CN 流量走 WARP   |
-
-大多数用户选择 `exclude` 模式：境外流量走 WARP，国内流量直连，兼顾速度与访问需求。
-
-### 设备策略（PROFILE_ID）
-
-- **留空**：更新默认设备策略的 Split Tunnels 规则
-- **填写策略 ID**：更新指定的自定义设备策略
-
------
-
-## 规则配额分配
-
-Cloudflare Zero Trust Split Tunnels 单策略最多支持 **4000 条**规则，本项目按如下方式分配：
-
-|规则类型            |条数        |数据来源                                  |优先级     |
-|----------------|----------|--------------------------------------|--------|
-|域名规则（`host`）    |最多 100 条  |Loyalsoldier/surge-rules `direct.txt` |高（DNS 层）|
-|IP 规则（`address`）|最多 3900 条 |soffchen/GeoIP2-CN `CN-ip-cidr.txt`   |低（网络层兜底）|
-|**合计**          |**4000 条**|                                      |        |
-
-> 域名规则排列在前，确保 DNS 层优先命中；IP 规则在后作为网络层兜底。
-
------
-
-## 数据源说明
-
-### IP 数据源
-
-|数据源                                                                                    |实测条目数       |状态  |备注              |
-|---------------------------------------------------------------------------------------|------------|----|----------------|
-|[soffchen/GeoIP2-CN](https://github.com/soffchen/GeoIP2-CN) `CN-ip-cidr.txt`          |~3900 条     |当前使用|全运营商聚合，由于配额充足可完整载入|
-|[gaoyifan/china-operator-ip](https://github.com/gaoyifan/china-operator-ip) `china.txt`|~4397 条     |备用  |全运营商聚合，取前 3900 条      |
-|[IPdeny aggregated](https://www.ipdeny.com/ipblocks/data/aggregated/cn-aggregated.zone)|~2200 条     |备用  |条目更少，可完整载入            |
-|[metowolf/iplist](https://github.com/metowolf/iplist) `china.txt`                      |~1700 条     |备用  |条目最少                      |
-
-### 域名数据源
-
-|数据源                                                                                 |条目数                 |状态  |备注                         |
-|------------------------------------------------------------------------------------|--------------------|----|---------------------------|
-|[Loyalsoldier/surge-rules](https://github.com/Loyalsoldier/surge-rules) `direct.txt`|~118000 条（过滤后取 100） |当前使用|人工维护，质量高，脚本过滤非法格式后取前 100 条|
-
------
-
-## 本地运行
-
-```bash
-# 安装依赖
-pip install requests
-
-# 设置环境变量
-export CF_API_TOKEN="your_api_token"
-export CF_ACCOUNT_ID="your_account_id"
-export CF_PROFILE_ID=""   # 留空使用默认策略
-export MODE="exclude"
-
-# 运行脚本
+### A. 本机直接写线上（最快，5 分钟）
+```powershell
+cd C:\DSH\cf-zt-split
+$env:CF_API_TOKEN  = "你的token"
+$env:CF_ACCOUNT_ID = "你的account id"
+$env:DRY_RUN = "1"          # 先试算，确认数字
+python cf-zt-cn-split.py
+$env:DRY_RUN = "0"          # 再真写
 python cf-zt-cn-split.py
 ```
+写完后 WARP 客户端最长 10 分钟拉取新策略。
 
-正常输出示例：
+### B. 让 GitHub Actions 常驻（不碰 token）
+1. 把 `cf-zt-cn-split.py` 覆盖仓库里的同名文件；
+2. 把 `sync-cn-split.yml` 覆盖 `.github/workflows/sync-cn-split.yml`；
+3. 仓库 Settings → Secrets 里已有 `CF_API_TOKEN`、`CF_ACCOUNT_ID`（v1 能跑说明已配好）；
+4. Actions → 同步 CN Split Tunnels → Run workflow。
+若想用 99.05% 覆盖：仓库 Settings → Variables 加 `OVERCOVER=1`。
 
-```
-🔄 拉取最新 CN geo 数据...
-   IP 数据源获取到 3958 条 CIDR
-   域名数据源获取到 1183 条域名（已过滤非法格式）
-   域名规则：100 条 | IP 规则：3900 条 | 合计：4000 条
-✅ 同步成功！4000 条路由 | Mode: exclude
-```
+### C. 两条 1000 行清单（面板/导入用）
+- `cn-exclude-1000-tight.txt`：零误伤，98.06%
+- `cn-exclude-1000-max.txt`：99.05%，误伤 4.57M 非 CN 地址（这些地址会绕过 WARP 走直连）
 
------
+## 验收（三步）
+1. `warp-cli settings`：Exclude 列表条数 = 1000，且出现 `220.x` / `223.x`；
+2. `Find-NetRoute -RemoteIPAddress 223.5.5.5`、`220.181.38.148` 应显示 `WLAN` 而非 `CloudflareWARP`；
+3. 访问国内站点延迟下降、国外站点仍能通。
 
-## GitHub Actions 定时任务
-
-默认配置为每天 UTC 02:00（北京时间 10:00）自动运行，也可在 Actions 页面点击 **Run workflow** 手动触发。
-
-如需修改定时频率，编辑 `.github/workflows/` 下 workflow 文件中的 `cron` 表达式。
-
------
-
-## 常见问题
-
-**Q：同步成功后 WARP 客户端需要重启吗？**  
-A：不需要，Cloudflare Zero Trust 策略更新后会自动下发到已连接的 WARP 客户端。
-
-**Q：报错 `invalid number of rules, number of rules cannot be greater than 4000`？**  
-A：IP 或域名数据源条目超出上限，脚本已内置截断逻辑，正常情况下不会触发。若触发请检查数据源是否变更。
-
-**Q：报错 `invalid exclude value` 或 `invalid domain name`？**  
-A：API payload 格式错误或域名包含非法字符，请确保使用最新版本脚本（已内置正则过滤）。
-
-**Q：报错 `404 Not Found`？**  
-A：数据源 URL 失效，请检查脚本中 `IP_URL` / `DOMAIN_URL` 是否仍然可访问，并切换至备用数据源。
-
-**Q：如何确认规则已生效？**  
-A：前往 Cloudflare Zero Trust Dashboard → **Settings → WARP Client → Device settings → 对应策略 → Split Tunnels**，查看规则列表是否已更新。
-
-**Q：为什么只取 100 条域名而不是更多？**  
-A：受限于 4000 条总配额，我们将更多空间留给了 IP CIDR 规则（~3900 条），以确保即使域名未命中，也能通过 IP 段实现高准确度的网络层兜底直连。100 条域名主要覆盖最高频访问的场景（如百度、阿里、各手机厂商等）。
-
------
-
-## 许可证
-
-MIT License
+## 回滚
+面板 → Zero Trust → Team & Resources → Devices → Device profiles → 目标 profile → Configure →
+Split Tunnels → `Restore default entries`（或把 v1 脚本再跑一次）。
