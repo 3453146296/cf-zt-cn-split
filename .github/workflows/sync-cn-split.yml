@@ -26,13 +26,14 @@ jobs:
       - name: Dry run
         env:
           DRY_RUN: '1'
+          MAX_RULES: ${{ vars.MAX_RULES || '1400' }}
         run: python cf-zt-cn-split.py
       - name: Write Cloudflare exclude list
         env:
           CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
           MODE: exclude
-          MAX_RULES: '1000'
+          MAX_RULES: ${{ vars.MAX_RULES || '1400' }}
           ALL_PROFILES: '1'
           EXTRAS: '1'
           PRESERVE: '1'
