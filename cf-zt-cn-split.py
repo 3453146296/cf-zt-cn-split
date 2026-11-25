@@ -93,6 +93,12 @@ LAN_RANGES = [
 # 不在 GeoIP2-CN 表里 → 走隧道 736ms，补上后转直连 20ms
 EXTRA_SINGLE = [
     ('202.89.233.0/24', 'CN 微软世纪互联'),
+    # 公共 DNS 单点：114DNS / CNNIC 的根 DNS 不在 GeoIP2-CN 表里，
+    # 实测 Find-NetRoute 显示 114.114.114.114 走 CloudflareWARP 隧道
+    ('114.114.114.114/32', 'CN 114DNS'),
+    ('114.114.114.115/32', 'CN 114DNS'),
+    ('1.2.4.8/32', 'CN CNNIC DNS'),
+    ('1.2.4.7/32', 'CN CNNIC DNS'),
 ]
 
 # 脚本自动生成的 IPv4 条目统一用这个描述前缀，PRESERVE 靠它区分「手工条目」
