@@ -5,7 +5,9 @@ permissions:
 
 on:
   schedule:
-    - cron: '0 3 * * 0'
+    # GitHub Actions cron is always UTC.
+    # '0 19 * * 6' = UTC Saturday 19:00 = Beijing time (UTC+8) Sunday 03:00
+    - cron: '0 19 * * 6'
   workflow_dispatch:
 
 concurrency:
